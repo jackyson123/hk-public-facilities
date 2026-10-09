@@ -41,6 +41,7 @@ interface MapProps {
   onSelect: (id: string | null) => void;
   lang: "zh" | "en";
   dark: boolean;
+  satellite: boolean;
 }
 
 export default function Map({
@@ -54,13 +55,18 @@ export default function Map({
   onSelect,
   lang,
   dark,
+  satellite,
 }: MapProps) {
-  const tileUrl = dark
+  const streetUrl = dark
     ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
     : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-  const attribution = dark
+  const streetAttr = dark
     ? '&copy; <a href="https://carto.com/">CARTO</a> &copy; OSM'
     : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+  const satUrl =
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+  const satAttr = "Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics";
 
   return (
     <MapContainer
@@ -69,7 +75,13 @@ export default function Map({
       className="h-full w-full z-0"
       scrollWheelZoom
     >
-      <TileLayer attribution={attribution} url={tileUrl} />
+      <TileLayer
+        key={satellite ? "sat" : dark ? "dark" : "osm"}
+        attribution={satellite ? satAttr : streetAttr}
+        url={satellite ? satUrl : streetUrl}
+        maxZoom={19}
+      />
+
       <FlyTo lat={flyLat} lng={flyLng} />
 
       {userLat != null && userLng != null && (

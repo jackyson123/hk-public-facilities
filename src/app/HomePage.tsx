@@ -33,6 +33,8 @@ import {
   Share2,
   Loader2,
   Database,
+  Globe,
+  CloudRain,
 } from "lucide-react";
 
 const Map = dynamic(() => import("@/components/Map"), {
@@ -73,24 +75,31 @@ export default function HomePage() {
   const [facilities, setFacilities] = useState<Facility[]>(SAMPLE_FACILITIES);
   const [dataStatus, setDataStatus] = useState<"loading" | "live" | "sample">("loading");
   const [toiletCount, setToiletCount] = useState(0);
+  const [waterCount, setWaterCount] = useState(0);
+  const [weatherTip, setWeatherTip] = useState<string | null>(null);
+  const [weatherTemp, setWeatherTemp] = useState<number | null>(null);
+  const [raining, setRaining] = useState(false);
+  const [satellite, setSatellite] = useState(false);
 
-  // Load FEHD real toilets + merge with sample non-toilets
+  // Load real FEHD toilets + EPD water, merge sample for other types
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/fehd-toilets");
+        const res = await fetch("/api/facilities");
         if (!res.ok) throw new Error("fetch failed");
         const data = await res.json();
         if (cancelled) return;
-        const realToilets: Facility[] = (data.facilities || []).map((t: Facility) => ({
+        const live: Facility[] = (data.facilities || []).map((t: Facility) => ({
           ...t,
-          source: "FEHD",
+          type: t.type as Facility["type"],
         }));
-        const others = SAMPLE_FACILITIES.filter((f) => f.type !== "toilet");
-        setFacilities([...realToilets, ...others]);
-        setToiletCount(realToilets.length);
-        setDataStatus("live");
+        const liveTypes = new Set(live.map((f) => f.type));
+        const others = SAMPLE_FACILITIES.filter((f) => !liveTypes.has(f.type));
+        setFacilities([...live, ...others]);
+        setToiletCount(data.counts?.toilet || 0);
+        setWaterCount(data.counts?.water || 0);
+        setDataStatus(live.length ? "live" : "sample");
       } catch {
         if (!cancelled) {
           setFacilities(SAMPLE_FACILITIES);
@@ -102,6 +111,27 @@ export default function HomePage() {
       cancelled = true;
     };
   }, []);
+
+  // Weather tips from HKO
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/weather?lang=${lang === "zh" ? "tc" : "en"}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setWeatherTemp(data.temperature ?? null);
+        setRaining(!!data.raining);
+        setWeatherTip(data.tips?.[0] || null);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [lang]);
 
   // Init from URL once
   useEffect(() => {
@@ -274,8 +304,8 @@ export default function HomePage() {
                 <>
                   <Database className="h-3 w-3 text-green-500" />
                   {lang === "zh"
-                    ? `FEHD 公廁 ${toiletCount} 個 · 實時`
-                    : `FEHD ${toiletCount} toilets · live`}
+                    ? `公廁 ${toiletCount} · 飲水機 ${waterCount} · 實時`
+                    : `Toilets ${toiletCount} · Water ${waterCount} · live`}
                 </>
               )}
               {dataStatus === "sample" && (
@@ -288,6 +318,13 @@ export default function HomePage() {
         <div className="flex items-center gap-0.5 sm:gap-1">
           <button onClick={sharePage} className={`p-2 rounded-lg ${dark ? "hover:bg-gray-800" : "hover:bg-gray-100"}`} title="Share">
             <Share2 className="h-4 w-4 sm:h-5 sm:w-5" />
+          </button>
+          <button
+            onClick={() => setSatellite((s) => !s)}
+            className={`p-2 rounded-lg ${satellite ? "bg-blue-600 text-white" : dark ? "hover:bg-gray-800" : "hover:bg-gray-100"}`}
+            title={lang === "zh" ? "衛星地圖" : "Satellite"}
+          >
+            <Globe className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
           <button onClick={() => setDark((d) => !d)} className={`p-2 rounded-lg ${dark ? "hover:bg-gray-800" : "hover:bg-gray-100"}`}>
             {dark ? <Sun className="h-4 w-4 sm:h-5 sm:w-5" /> : <Moon className="h-4 w-4 sm:h-5 sm:w-5" />}
@@ -324,6 +361,25 @@ export default function HomePage() {
           />
         </div>
       </div>
+
+      {weatherTip && (
+        <div className={`shrink-0 px-3 py-2 border-b text-xs flex items-start gap-2 ${
+          raining
+            ? dark ? "bg-blue-950/50 border-blue-900 text-blue-200" : "bg-blue-50 border-blue-100 text-blue-800"
+            : dark ? "bg-amber-950/40 border-amber-900 text-amber-200" : "bg-amber-50 border-amber-100 text-amber-900"
+        }`}>
+          <CloudRain className="h-4 w-4 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            {weatherTemp != null && (
+              <span className="font-semibold mr-2">{weatherTemp}°C</span>
+            )}
+            <span>{weatherTip}</span>
+          </div>
+          <button onClick={() => setWeatherTip(null)} className="shrink-0 opacity-60 hover:opacity-100">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {showDistricts && (
         <div className={`shrink-0 border-b px-3 py-2 z-20 max-h-40 overflow-y-auto ${card}`}>
@@ -437,6 +493,7 @@ export default function HomePage() {
             onToggleFav={onToggleFav}
             lang={lang}
             dark={dark}
+            satellite={satellite}
           />
         </aside>
 
