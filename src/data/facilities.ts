@@ -21,6 +21,7 @@ export interface Facility {
   phone?: string;
   /** For EV: charger types */
   chargerTypes?: string[];
+  source?: string;
 }
 
 export const FACILITY_META: Record<
