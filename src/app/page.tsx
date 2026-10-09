@@ -6,8 +6,14 @@ import {
   SAMPLE_FACILITIES,
   FacilityType,
   FACILITY_META,
+  DISTRICTS,
+  RADIUS_OPTIONS,
+  getDistanceMeters,
+  isOpenNow,
 } from "@/data/facilities";
 import FacilityList from "@/components/FacilityList";
+import DetailPanel from "@/components/DetailPanel";
+import { getFavorites, toggleFavorite } from "@/lib/favorites";
 import {
   LocateFixed,
   Filter,
@@ -15,6 +21,12 @@ import {
   Map as MapIcon,
   List,
   X,
+  Moon,
+  Sun,
+  Heart,
+  Search,
+  Accessibility,
+  MapPinned,
 } from "lucide-react";
 
 const Map = dynamic(() => import("@/components/Map"), {
@@ -26,23 +38,66 @@ const Map = dynamic(() => import("@/components/Map"), {
   ),
 });
 
-const ALL_TYPES: FacilityType[] = ["toilet", "water", "ev", "wifi", "clinic"];
+const ALL_TYPES: FacilityType[] = ["toilet", "water", "ev", "wifi", "clinic", "shelter"];
 
 export default function HomePage() {
   const [lang, setLang] = useState<"zh" | "en">("zh");
-  const [activeTypes, setActiveTypes] = useState<Set<FacilityType>>(
-    new Set(ALL_TYPES)
-  );
+  const [dark, setDark] = useState(false);
+  const [activeTypes, setActiveTypes] = useState<Set<FacilityType>>(new Set(ALL_TYPES));
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
+  const [flyLat, setFlyLat] = useState<number | null>(null);
+  const [flyLng, setFlyLng] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
   const [showFilters, setShowFilters] = useState(false);
+  const [radius, setRadius] = useState(0);
+  const [onlyAccessible, setOnlyAccessible] = useState(false);
+  const [onlyOpen, setOnlyOpen] = useState(false);
+  const [onlyFav, setOnlyFav] = useState(false);
+  const [search, setSearch] = useState("");
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [showDistricts, setShowDistricts] = useState(false);
 
-  const filtered = useMemo(
-    () => SAMPLE_FACILITIES.filter((f) => activeTypes.has(f.type)),
-    [activeTypes]
+  useEffect(() => {
+    setFavorites(getFavorites());
+    const preferDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    setDark(preferDark);
+  }, []);
+
+  const filtered = useMemo(() => {
+    let list = SAMPLE_FACILITIES.filter((f) => activeTypes.has(f.type));
+
+    if (onlyAccessible) list = list.filter((f) => f.accessible);
+    if (onlyOpen) list = list.filter((f) => isOpenNow(f.openSchedule) === true);
+    if (onlyFav) list = list.filter((f) => favorites.includes(f.id));
+
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(
+        (f) =>
+          f.nameZh.includes(search.trim()) ||
+          f.nameEn.toLowerCase().includes(q) ||
+          f.addressZh.includes(search.trim()) ||
+          f.addressEn.toLowerCase().includes(q) ||
+          f.districtZh.includes(search.trim()) ||
+          f.districtEn.toLowerCase().includes(q)
+      );
+    }
+
+    if (radius > 0 && userLat != null && userLng != null) {
+      list = list.filter(
+        (f) => getDistanceMeters(userLat, userLng, f.lat, f.lng) <= radius
+      );
+    }
+
+    return list;
+  }, [activeTypes, onlyAccessible, onlyOpen, onlyFav, favorites, search, radius, userLat, userLng]);
+
+  const selected = useMemo(
+    () => (selectedId ? SAMPLE_FACILITIES.find((f) => f.id === selectedId) ?? null : null),
+    [selectedId]
   );
 
   const toggleType = (t: FacilityType) => {
@@ -50,9 +105,7 @@ export default function HomePage() {
       const next = new Set(prev);
       if (next.has(t)) {
         if (next.size > 1) next.delete(t);
-      } else {
-        next.add(t);
-      }
+      } else next.add(t);
       return next;
     });
   };
@@ -67,52 +120,63 @@ export default function HomePage() {
       (pos) => {
         setUserLat(pos.coords.latitude);
         setUserLng(pos.coords.longitude);
+        setFlyLat(pos.coords.latitude);
+        setFlyLng(pos.coords.longitude);
         setLocating(false);
       },
       () => {
         setLocating(false);
-        alert(
-          lang === "zh"
-            ? "無法取得位置，請檢查權限"
-            : "Unable to get location. Check permissions."
-        );
+        alert(lang === "zh" ? "無法取得位置，請檢查權限" : "Unable to get location");
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 12000 }
     );
   }, [lang]);
 
+  const onToggleFav = (id: string) => {
+    setFavorites(toggleFavorite(id));
+  };
+
+  const jumpDistrict = (lat: number, lng: number) => {
+    setFlyLat(lat);
+    setFlyLng(lng);
+    setShowDistricts(false);
+    setMobileView("map");
+  };
+
+  const bg = dark ? "bg-gray-950" : "bg-gray-50";
+  const card = dark ? "bg-gray-900 border-gray-700" : "bg-white border-gray-200";
+  const text = dark ? "text-gray-100" : "text-gray-900";
+  const muted = dark ? "text-gray-400" : "text-gray-500";
+
   return (
-    <div className="h-dvh flex flex-col bg-gray-50">
+    <div className={`h-dvh flex flex-col ${bg} ${text}`}>
       {/* Header */}
-      <header className="shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between gap-3 z-20">
+      <header className={`shrink-0 border-b px-3 py-2.5 flex items-center justify-between gap-2 z-20 ${card}`}>
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl">🗺️</span>
           <div className="min-w-0">
-            <h1 className="font-bold text-gray-900 text-base truncate">
+            <h1 className="font-bold text-sm sm:text-base truncate">
               {lang === "zh" ? "香港公共設施地圖" : "HK Public Facilities"}
             </h1>
-            <p className="text-xs text-gray-500 truncate">
-              {lang === "zh"
-                ? "公廁 · 飲水機 · EV · Wi-Fi · 診所"
-                : "Toilets · Water · EV · Wi-Fi · Clinics"}
+            <p className={`text-[10px] sm:text-xs truncate ${muted}`}>
+              {lang === "zh" ? "公廁 · 飲水機 · EV · Wi-Fi · 診所 · 涼亭" : "Toilets · Water · EV · Wi-Fi · Clinics · Shelters"}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))}
-            className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
-            title="Language"
-          >
-            <Languages className="h-5 w-5" />
+        <div className="flex items-center gap-0.5 sm:gap-1">
+          <button onClick={() => setDark((d) => !d)} className={`p-2 rounded-lg ${dark ? "hover:bg-gray-800" : "hover:bg-gray-100"}`} title="Theme">
+            {dark ? <Sun className="h-4 w-4 sm:h-5 sm:w-5" /> : <Moon className="h-4 w-4 sm:h-5 sm:w-5" />}
           </button>
-          <button
-            onClick={() => setShowFilters((v) => !v)}
-            className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 relative"
-          >
-            <Filter className="h-5 w-5" />
-            {activeTypes.size < ALL_TYPES.length && (
+          <button onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))} className={`p-2 rounded-lg ${dark ? "hover:bg-gray-800" : "hover:bg-gray-100"}`}>
+            <Languages className="h-4 w-4 sm:h-5 sm:w-5" />
+          </button>
+          <button onClick={() => setShowDistricts((v) => !v)} className={`p-2 rounded-lg ${dark ? "hover:bg-gray-800" : "hover:bg-gray-100"}`} title="Districts">
+            <MapPinned className="h-4 w-4 sm:h-5 sm:w-5" />
+          </button>
+          <button onClick={() => setShowFilters((v) => !v)} className={`p-2 rounded-lg relative ${dark ? "hover:bg-gray-800" : "hover:bg-gray-100"}`}>
+            <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+            {(activeTypes.size < ALL_TYPES.length || onlyAccessible || onlyOpen || onlyFav || radius > 0) && (
               <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-blue-500" />
             )}
           </button>
@@ -120,30 +184,60 @@ export default function HomePage() {
             onClick={locateMe}
             disabled={locating}
             className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-            title={lang === "zh" ? "定位" : "Locate me"}
           >
-            <LocateFixed
-              className={`h-5 w-5 ${locating ? "animate-pulse" : ""}`}
-            />
+            <LocateFixed className={`h-4 w-4 sm:h-5 sm:w-5 ${locating ? "animate-pulse" : ""}`} />
           </button>
         </div>
       </header>
 
-      {/* Filters panel */}
-      {showFilters && (
-        <div className="shrink-0 bg-white border-b border-gray-200 px-4 py-3 z-20">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">
-              {lang === "zh" ? "設施類型" : "Facility types"}
-            </span>
-            <button
-              onClick={() => setShowFilters(false)}
-              className="p-1 rounded hover:bg-gray-100"
-            >
-              <X className="h-4 w-4 text-gray-500" />
-            </button>
+      {/* Search */}
+      <div className={`shrink-0 px-3 py-2 border-b ${card}`}>
+        <div className="relative">
+          <Search className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${muted}`} />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={lang === "zh" ? "搜尋名稱、地址、地區…" : "Search name, address, district…"}
+            className={`w-full pl-9 pr-3 py-2 rounded-xl text-sm outline-none border ${
+              dark ? "bg-gray-800 border-gray-700 placeholder:text-gray-500" : "bg-gray-50 border-gray-200 placeholder:text-gray-400"
+            }`}
+          />
+        </div>
+      </div>
+
+      {/* District jump */}
+      {showDistricts && (
+        <div className={`shrink-0 border-b px-3 py-2 z-20 max-h-40 overflow-y-auto ${card}`}>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-medium">{lang === "zh" ? "快速跳轉分區" : "Jump to district"}</span>
+            <button onClick={() => setShowDistricts(false)}><X className="h-4 w-4" /></button>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
+            {DISTRICTS.map((d) => (
+              <button
+                key={d.en}
+                onClick={() => jumpDistrict(d.lat, d.lng)}
+                className={`px-2.5 py-1 rounded-full text-xs border ${
+                  dark ? "border-gray-600 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                {lang === "zh" ? d.zh : d.en}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      {showFilters && (
+        <div className={`shrink-0 border-b px-3 py-3 z-20 space-y-3 ${card}`}>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">{lang === "zh" ? "篩選" : "Filters"}</span>
+            <button onClick={() => setShowFilters(false)}><X className="h-4 w-4" /></button>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
             {ALL_TYPES.map((t) => {
               const meta = FACILITY_META[t];
               const active = activeTypes.has(t);
@@ -151,92 +245,165 @@ export default function HomePage() {
                 <button
                   key={t}
                   onClick={() => toggleType(t)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all border ${
-                    active
-                      ? "text-white border-transparent"
-                      : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                    active ? "text-white border-transparent" : dark ? "border-gray-600 text-gray-300" : "border-gray-200 text-gray-600"
                   }`}
-                  style={
-                    active
-                      ? { backgroundColor: meta.color }
-                      : undefined
-                  }
+                  style={active ? { backgroundColor: meta.color } : undefined}
                 >
-                  <span>{meta.emoji}</span>
-                  {lang === "zh" ? meta.labelZh : meta.labelEn}
+                  {meta.emoji} {lang === "zh" ? meta.labelZh : meta.labelEn}
                 </button>
               );
             })}
           </div>
+
+          <div className="flex flex-wrap gap-2 items-center text-xs">
+            <span className={muted}>{lang === "zh" ? "距離" : "Radius"}:</span>
+            {RADIUS_OPTIONS.map((r) => (
+              <button
+                key={r.value}
+                onClick={() => setRadius(r.value)}
+                className={`px-2.5 py-1 rounded-full border ${
+                  radius === r.value
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : dark ? "border-gray-600" : "border-gray-200"
+                }`}
+              >
+                {lang === "zh" ? r.labelZh : r.labelEn}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setOnlyAccessible((v) => !v)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${
+                onlyAccessible ? "bg-blue-600 text-white border-blue-600" : dark ? "border-gray-600" : "border-gray-200"
+              }`}
+            >
+              <Accessibility className="h-3.5 w-3.5" />
+              {lang === "zh" ? "暢通易達" : "Accessible"}
+            </button>
+            <button
+              onClick={() => setOnlyOpen((v) => !v)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${
+                onlyOpen ? "bg-green-600 text-white border-green-600" : dark ? "border-gray-600" : "border-gray-200"
+              }`}
+            >
+              {lang === "zh" ? "現正開放" : "Open now"}
+            </button>
+            <button
+              onClick={() => setOnlyFav((v) => !v)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${
+                onlyFav ? "bg-red-500 text-white border-red-500" : dark ? "border-gray-600" : "border-gray-200"
+              }`}
+            >
+              <Heart className="h-3.5 w-3.5" />
+              {lang === "zh" ? "收藏" : "Favorites"}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Main content */}
+      {/* Main */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Desktop sidebar */}
-        <aside className="hidden md:flex w-80 shrink-0 flex-col bg-white border-r border-gray-200">
-          <div className="px-4 py-2 text-xs text-gray-500 border-b">
-            {lang === "zh"
-              ? `顯示 ${filtered.length} 個設施`
-              : `Showing ${filtered.length} facilities`}
+        <aside className={`hidden md:flex w-80 shrink-0 flex-col border-r ${card}`}>
+          <div className={`px-4 py-2 text-xs border-b ${muted} ${dark ? "border-gray-700" : "border-gray-100"}`}>
+            {lang === "zh" ? `顯示 ${filtered.length} 個設施` : `Showing ${filtered.length} facilities`}
+            {favorites.length > 0 && ` · ${favorites.length} ${lang === "zh" ? "收藏" : "fav"}`}
           </div>
           <FacilityList
             facilities={filtered}
             userLat={userLat}
             userLng={userLng}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            favorites={favorites}
+            onSelect={(id) => {
+              setSelectedId(id);
+              const f = SAMPLE_FACILITIES.find((x) => x.id === id);
+              if (f) {
+                setFlyLat(f.lat);
+                setFlyLng(f.lng);
+              }
+            }}
+            onToggleFav={onToggleFav}
             lang={lang}
+            dark={dark}
           />
         </aside>
 
-        {/* Map */}
-        <div
-          className={`flex-1 relative ${
-            mobileView === "list" ? "hidden md:block" : "block"
-          }`}
-        >
+        <div className={`flex-1 relative ${mobileView === "list" ? "hidden md:block" : "block"}`}>
           <Map
             facilities={filtered}
             userLat={userLat}
             userLng={userLng}
+            flyLat={flyLat}
+            flyLng={flyLng}
+            radiusMeters={radius}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={(id) => {
+              setSelectedId(id);
+              if (id) {
+                const f = SAMPLE_FACILITIES.find((x) => x.id === id);
+                if (f) {
+                  setFlyLat(f.lat);
+                  setFlyLng(f.lng);
+                }
+              }
+            }}
             lang={lang}
+            dark={dark}
           />
+          {selected && (
+            <DetailPanel
+              facility={selected}
+              userLat={userLat}
+              userLng={userLng}
+              isFav={favorites.includes(selected.id)}
+              onClose={() => setSelectedId(null)}
+              onToggleFav={() => onToggleFav(selected.id)}
+              lang={lang}
+              dark={dark}
+            />
+          )}
         </div>
 
         {/* Mobile list */}
         <div
-          className={`absolute inset-0 bg-white z-10 flex flex-col md:hidden ${
+          className={`absolute inset-0 z-10 flex flex-col md:hidden ${card} ${
             mobileView === "list" ? "block" : "hidden"
           }`}
         >
-          <div className="px-4 py-2 text-xs text-gray-500 border-b">
-            {lang === "zh"
-              ? `顯示 ${filtered.length} 個設施`
-              : `Showing ${filtered.length} facilities`}
+          <div className={`px-4 py-2 text-xs border-b ${muted}`}>
+            {lang === "zh" ? `顯示 ${filtered.length} 個設施` : `Showing ${filtered.length}`}
           </div>
           <FacilityList
             facilities={filtered}
             userLat={userLat}
             userLng={userLng}
             selectedId={selectedId}
+            favorites={favorites}
             onSelect={(id) => {
               setSelectedId(id);
               setMobileView("map");
+              const f = SAMPLE_FACILITIES.find((x) => x.id === id);
+              if (f) {
+                setFlyLat(f.lat);
+                setFlyLng(f.lng);
+              }
             }}
+            onToggleFav={onToggleFav}
             lang={lang}
+            dark={dark}
           />
         </div>
       </div>
 
-      {/* Mobile bottom toggle */}
-      <div className="md:hidden shrink-0 bg-white border-t border-gray-200 flex z-20">
+      {/* Mobile nav */}
+      <div className={`md:hidden shrink-0 border-t flex z-20 ${card}`}>
         <button
           onClick={() => setMobileView("map")}
           className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium ${
-            mobileView === "map" ? "text-blue-600" : "text-gray-500"
+            mobileView === "map" ? "text-blue-500" : muted
           }`}
         >
           <MapIcon className="h-5 w-5" />
@@ -245,7 +412,7 @@ export default function HomePage() {
         <button
           onClick={() => setMobileView("list")}
           className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium ${
-            mobileView === "list" ? "text-blue-600" : "text-gray-500"
+            mobileView === "list" ? "text-blue-500" : muted
           }`}
         >
           <List className="h-5 w-5" />
@@ -253,15 +420,9 @@ export default function HomePage() {
         </button>
       </div>
 
-      {/* Footer note */}
-      <footer className="hidden md:block shrink-0 bg-white border-t border-gray-100 px-4 py-1.5 text-[10px] text-gray-400 text-center">
-        Data inspired by FEHD / EPD / CSDI open data · Demo only ·{" "}
-        <a
-          href="https://data.gov.hk"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline"
-        >
+      <footer className={`hidden md:block shrink-0 border-t px-4 py-1 text-[10px] text-center ${muted} ${card}`}>
+        Demo data inspired by FEHD / EPD / CSDI ·{" "}
+        <a href="https://data.gov.hk" target="_blank" rel="noopener noreferrer" className="underline">
           data.gov.hk
         </a>
       </footer>
