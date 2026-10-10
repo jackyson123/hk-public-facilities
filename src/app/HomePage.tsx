@@ -17,6 +17,7 @@ import FacilityList from "@/components/FacilityList";
 import DetailPanel from "@/components/DetailPanel";
 import { getFavorites, toggleFavorite } from "@/lib/favorites";
 import { parseUrlState, buildUrlQuery } from "@/lib/urlState";
+import { APP_VERSION } from "@/lib/version";
 import {
   LocateFixed,
   Filter,
@@ -311,6 +312,7 @@ export default function HomePage() {
               {dataStatus === "sample" && (
                 <>{lang === "zh" ? "示範數據（離線）" : "Sample data (offline)"}</>
               )}
+              <span className="opacity-50">· v{APP_VERSION}</span>
             </p>
           </div>
         </div>
@@ -576,14 +578,20 @@ export default function HomePage() {
         </button>
       </div>
 
-      <footer className={`hidden md:block shrink-0 border-t px-4 py-1 text-[10px] text-center ${muted} ${card}`}>
-        {dataStatus === "live" ? "Public toilet data from FEHD · " : ""}
+      <footer className={`hidden md:block shrink-0 border-t px-4 py-1.5 text-[10px] text-center ${muted} ${card}`}>
+        <span className="font-medium text-blue-500/80">v{APP_VERSION}</span>
+        {" · "}
+        {dataStatus === "live" ? (lang === "zh" ? "實時數據 · " : "Live data · ") : ""}
         <a href="https://data.gov.hk" target="_blank" rel="noopener noreferrer" className="underline">
           data.gov.hk
         </a>
         {" · "}
         <a href="https://www.fehd.gov.hk" target="_blank" rel="noopener noreferrer" className="underline">
           FEHD
+        </a>
+        {" · "}
+        <a href="https://www.epd.gov.hk" target="_blank" rel="noopener noreferrer" className="underline">
+          EPD
         </a>
       </footer>
     </div>
